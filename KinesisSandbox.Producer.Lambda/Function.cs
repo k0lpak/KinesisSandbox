@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 using Amazon.Kinesis;
@@ -18,14 +19,7 @@ namespace KinesisSandbox.Producer.Lambda
         private readonly IAmazonKinesis _stream;
         private const string StreamName = "tripstream";
         private const int BatchSize = 50;
-        private string[] _shards = new []
-        {
-             "0",
-             "68056473384187692692674921486353642291",
-             "136112946768375385385349842972707284582",
-             "204169420152563078078024764459060926873",
-             "272225893536750770770699685945414569164"
-        };
+        private List<string> _shards;
         
         public Function()
         {
@@ -34,7 +28,19 @@ namespace KinesisSandbox.Producer.Lambda
 
         public async Task FunctionHandler(BatchRequest request, ILambdaContext context)
         {
+            await ComputeShards();
             await SendBatchToStream(request);
+        }
+
+        private async Task ComputeShards()
+        {
+            var streamConfig = await _stream.DescribeStreamAsync(new DescribeStreamRequest
+            {
+                StreamName = StreamName
+            });
+            _shards = streamConfig.StreamDescription.Shards
+                .Where(shard => string.IsNullOrEmpty(shard.SequenceNumberRange.EndingSequenceNumber))
+                .Select(shard => shard.HashKeyRange.StartingHashKey).ToList();
         }
 
         private async Task SendBatchToStream(BatchRequest request)
@@ -57,7 +63,7 @@ namespace KinesisSandbox.Producer.Lambda
                 }
             }
 
-            LogInfo("Completed");
+            LogInfo($"Completed. {DateTime.UtcNow}");
         }
 
         private IList<string> GenerateRecords(BatchRequest batch)
@@ -77,7 +83,7 @@ namespace KinesisSandbox.Producer.Lambda
             return records.Select((record, index) => new PutRecordsRequestEntry
             {
                 PartitionKey = $"pk-{index}",
-                ExplicitHashKey = $"{_shards[index % _shards.Length]}",
+                ExplicitHashKey = $"{_shards[index % _shards.Count]}",
                 Data = new MemoryStream(Encoding.UTF8.GetBytes(record))
             }).ToList();
         }
