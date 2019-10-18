@@ -82,8 +82,8 @@ namespace KinesisSandbox.Producer.Lambda
         {
             return records.Select((record, index) => new PutRecordsRequestEntry
             {
-                PartitionKey = $"pk-{index}",
-                ExplicitHashKey = $"{_shards[index % _shards.Count]}",
+                PartitionKey = Guid.NewGuid().ToString(), //$"pk-{index}",
+                //ExplicitHashKey = $"{_shards[index % _shards.Count]}",
                 Data = new MemoryStream(Encoding.UTF8.GetBytes(record))
             }).ToList();
         }
